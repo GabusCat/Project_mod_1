@@ -1,0 +1,54 @@
+-- =============================================================================
+-- Módulo: mo_alm (Módulo de Almacenamiento)
+-- Propósito: Almacenar de forma segura la clave de acceso con sincronización
+--            al reloj. Solo actualiza la clave cuando la señal Load está activa.
+-- =============================================================================
+
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+
+entity mo_alm is
+    Port ( 
+        -- Entradas de control
+        clk   : in STD_LOGIC;                    -- Reloj del sistema
+        reset : in STD_LOGIC;                    -- Reset asíncrono
+        -- Entrada de datos
+        Dkey  : in STD_LOGIC_VECTOR (3 downto 0); -- Clave a almacenar
+        -- Salida de datos  
+        Skey  : out STD_LOGIC_VECTOR (3 downto 0); -- Clave almacenada
+        -- Control de carga
+        Load  : in STD_LOGIC                     -- Habilitación de carga
+    );
+end mo_alm;
+
+architecture Behavioral of mo_alm is
+    -- Señal interna para almacenar la clave
+    signal stored_key : STD_LOGIC_VECTOR(3 downto 0) := "0000";
+    
+begin
+
+    -- =========================================================================
+    -- Proceso: Registro de clave con reset y habilitación
+    -- Descripción: Proceso sensible al reloj y reset que controla el 
+    --              almacenamiento de la clave.
+    -- =========================================================================
+    process(clk, reset)
+    begin
+        -- Reset asíncrono: inicializa la clave a "0000"
+        if reset = '1' then
+            stored_key <= "0000";
+            
+        -- Flanco de subida del reloj
+        elsif rising_edge(clk) then
+            -- Solo carga nueva clave cuando Load está activo
+            if Load = '1' then
+                stored_key <= Dkey;
+            end if;
+            -- Si Load='0', mantiene el valor actual automáticamente
+        end if;
+    end process;
+
+    -- Conexión directa de la señal interna a la salida
+    Skey <= stored_key;
+
+end Behavioral;
