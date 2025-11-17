@@ -1,0 +1,192 @@
+-- =============================================================================
+-- Módulo: mo_top (Módulo Top-Level de Integración)
+-- Propósito: Conectar e integrar todos los módulos del sistema.
+--            Gestionar el mapeo de señales globales y la comunicación
+--            entre los diferentes componentes.
+-- =============================================================================
+
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+
+entity mo_top is
+    Port ( 
+        -- Entradas globales del sistema
+        clk           : in STD_LOGIC;                    -- Reloj principal (100MHz)
+        reset         : in STD_LOGIC;                    -- Reset global
+        -- Entradas de usuario (botones físicos)
+        btn_config    : in STD_LOGIC;                    -- Botón modo configuración
+        btn_confirmar : in STD_LOGIC;                    -- Botón confirmar clave
+        btn_comp      : in STD_LOGIC;                    -- Botón comparar clave
+        -- Entradas de datos (switches físicos)
+        switches      : in STD_LOGIC_VECTOR (3 downto 0); -- Clave ingresada
+        -- Salidas a displays 7-segmentos
+        an            : out STD_LOGIC_VECTOR (3 downto 0); -- Ánodos displays
+        seg           : out STD_LOGIC_VECTOR (6 downto 0); -- Segmentos displays
+        -- Salidas a LEDs indicadores
+        leds          : out STD_LOGIC_VECTOR (15 downto 0); -- Banco de LEDs
+        -- Salida de estado del sistema
+        mo_2          : out STD_LOGIC                    -- Señal de acceso concedido
+    );
+end mo_top;
+
+architecture Behavioral of mo_top is
+    -- =========================================================================
+    -- Señales internas de interconexión entre módulos
+    -- =========================================================================
+    
+    -- Señales de datos y almacenamiento
+    signal clave_guardada   : STD_LOGIC_VECTOR(3 downto 0); -- Clave almacenada
+    signal load_key_sig     : STD_LOGIC;                    -- Señal de carga clave
+    
+    -- Señales de estado y control
+    signal intentos_sig     : STD_LOGIC_VECTOR(1 downto 0); -- Intentos restantes
+    signal bloqueo_sig      : STD_LOGIC;                    -- Estado de bloqueo
+    signal tiempo_rest_sig  : STD_LOGIC_VECTOR(5 downto 0); -- Tiempo bloqueo restante
+    
+    -- Señales de modo de operación
+    signal modo_config_sig  : STD_LOGIC;                    -- Modo configuración activo
+    signal modo_verif_sig   : STD_LOGIC;                    -- Modo verificación activo
+    
+    -- =========================================================================
+    -- Declaración de componentes (instancias de módulos)
+    -- =========================================================================
+    
+    -- Módulo de almacenamiento de clave
+    component mo_alm
+        Port ( 
+            clk   : in STD_LOGIC;
+            reset : in STD_LOGIC;
+            Dkey  : in STD_LOGIC_VECTOR (3 downto 0);
+            Skey  : out STD_LOGIC_VECTOR (3 downto 0);
+            Load  : in STD_LOGIC
+        );
+    end component;
+    
+    -- Módulo de control principal (FSM)
+    component mo_control
+        Port ( 
+            clk              : in STD_LOGIC;
+            reset            : in STD_LOGIC;
+            btn_config       : in STD_LOGIC;
+            btn_confirmar    : in STD_LOGIC;
+            btn_comp         : in STD_LOGIC;
+            clave_ingresada  : in STD_LOGIC_VECTOR(3 downto 0);
+            clave_almacenada : in STD_LOGIC_VECTOR(3 downto 0);
+            load_key         : out STD_LOGIC;
+            mo_2             : out STD_LOGIC;
+            intentos         : out STD_LOGIC_VECTOR(1 downto 0);
+            bloqueo_activo   : out STD_LOGIC;
+            tiempo_restante  : out STD_LOGIC_VECTOR(5 downto 0)
+        );
+    end component;
+    
+    -- Módulo de visualización en displays
+    component mo_vis
+        Port ( 
+            clk                : in STD_LOGIC;
+            modo_config        : in STD_LOGIC;
+            modo_verificacion  : in STD_LOGIC;
+            modo_bloqueo       : in STD_LOGIC;
+            clave_actual       : in STD_LOGIC_VECTOR (3 downto 0);
+            tiempo_restante    : in STD_LOGIC_VECTOR (5 downto 0);
+            intentos_restantes : in STD_LOGIC_VECTOR (1 downto 0);
+            an                 : out STD_LOGIC_VECTOR (3 downto 0);
+            seg                : out STD_LOGIC_VECTOR (6 downto 0)
+        );
+    end component;
+    
+    -- Módulo de control de LEDs indicadores
+    component mo_leds
+        Port ( 
+            intentos_restantes : in STD_LOGIC_VECTOR (1 downto 0);
+            modo_bloqueo       : in STD_LOGIC;
+            leds               : out STD_LOGIC_VECTOR (15 downto 0)
+        );
+    end component;
+
+begin
+
+    -- =========================================================================
+    -- Proceso: Lógica de detección de modos de operación
+    -- Descripción: Determina en qué modo se encuentra el sistema para
+    --              la visualización correcta en los displays
+    -- =========================================================================
+    process(clk, reset)
+    begin
+        if reset = '1' then
+            -- Reset: inicializa ambos modos a 0
+            modo_config_sig <= '0';
+            modo_verif_sig <= '0';
+        elsif rising_edge(clk) then
+            -- Prioridad: Bloqueo sobre otros modos
+            if bloqueo_sig = '1' then
+                modo_config_sig <= '0';
+                modo_verif_sig <= '0';
+            -- Botón config activa modo configuración
+            elsif btn_config = '1' then
+                modo_config_sig <= '1';
+                modo_verif_sig <= '0';
+            -- Por defecto: modo verificación
+            else
+                modo_config_sig <= '0';
+                modo_verif_sig <= '1';
+            end if;
+        end if;
+    end process;
+
+    -- =========================================================================
+    -- Instanciación de módulos del sistema
+    -- Descripción: Conexión de todos los componentes con las señales internas
+    --              y mapeo correcto de entradas/salidas
+    -- =========================================================================
+    
+    -- Módulo de almacenamiento de clave
+    almacenamiento: mo_alm
+        port map (
+            clk   => clk,
+            reset => reset,
+            Dkey  => switches,          -- Clave desde switches físicos
+            Skey  => clave_guardada,    -- Clave almacenada internamente
+            Load  => load_key_sig       -- Señal de carga desde control
+        );
+    
+    -- Módulo de control principal (máquina de estados)
+    control: mo_control
+        port map (
+            clk              => clk,
+            reset            => reset,
+            btn_config       => btn_config,
+            btn_confirmar    => btn_confirmar,
+            btn_comp         => btn_comp,
+            clave_ingresada  => switches,        -- Clave actual desde switches
+            clave_almacenada => clave_guardada,  -- Clave almacenada para comparación
+            load_key         => load_key_sig,    -- Señal para cargar nueva clave
+            mo_2             => mo_2,            -- Salida de acceso concedido
+            intentos         => intentos_sig,    -- Intentos a visualización y leds
+            bloqueo_activo   => bloqueo_sig,     -- Estado de bloqueo
+            tiempo_restante  => tiempo_rest_sig  -- Tiempo para visualización
+        );
+    
+    -- Módulo de visualización en displays 7-segmentos
+    visualizacion: mo_vis
+        port map (
+            clk                => clk,
+            modo_config        => modo_config_sig,   -- Modo desde lógica local
+            modo_verificacion  => modo_verif_sig,    -- Modo desde lógica local
+            modo_bloqueo       => bloqueo_sig,       -- Modo desde control
+            clave_actual       => switches,          -- Clave actual a mostrar
+            tiempo_restante    => tiempo_rest_sig,   -- Tiempo desde control
+            intentos_restantes => intentos_sig,      -- Intentos desde control
+            an                 => an,                -- Salida a ánodos físicos
+            seg                => seg                -- Salida a segmentos físicos
+        );
+    
+    -- Módulo de control de leds indicadores
+    control_leds: mo_leds
+        port map (
+            intentos_restantes => intentos_sig,  -- Intentos desde control
+            modo_bloqueo       => bloqueo_sig,   -- Estado de bloqueo
+            leds               => leds           -- Salida a leds físicos
+        );
+
+end Behavioral;
