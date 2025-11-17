@@ -1,0 +1,184 @@
+-- =============================================================================
+-- Módulo: mo_control (Módulo de Control Principal)
+-- Propósito: Implementar la máquina de estados finita (FSM) que controla
+--            el comportamiento completo del sistema de seguridad.
+--            Gesta estados, intentos, bloqueos y temporizaciones.
+-- =============================================================================
+
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity mo_control is
+    Port ( 
+        -- Entradas de control del sistema
+        clk              : in STD_LOGIC;                    -- Reloj principal (100MHz)
+        reset            : in STD_LOGIC;                    -- Reset global
+        -- Entradas de usuario (botones)
+        btn_config       : in STD_LOGIC;                    -- Botón modo configuración
+        btn_confirmar    : in STD_LOGIC;                    -- Botón confirmar clave
+        btn_comp         : in STD_LOGIC;                    -- Botón comparar clave
+        -- Entradas de datos
+        clave_ingresada  : in STD_LOGIC_VECTOR(3 downto 0); -- Clave ingresada por usuario
+        clave_almacenada : in STD_LOGIC_VECTOR(3 downto 0); -- Clave almacenada
+        -- Salidas de control
+        load_key         : out STD_LOGIC;                   -- Señal para cargar nueva clave
+        mo_2             : out STD_LOGIC;                   -- Señal de acceso concedido
+        -- Salidas de estado del sistema
+        intentos         : out STD_LOGIC_VECTOR(1 downto 0); -- Intentos restantes
+        bloqueo_activo   : out STD_LOGIC;                   -- Indicador de bloqueo
+        tiempo_restante  : out STD_LOGIC_VECTOR(5 downto 0) -- Tiempo bloqueo (0-30 seg)
+    );
+end mo_control;
+
+architecture Behavioral of mo_control is
+    -- =========================================================================
+    -- Definición de estados del sistema
+    -- CONFIG: Modo configuración de nueva clave
+    -- VERIF:  Modo verificación de clave ingresada  
+    -- BLOQUEO: Sistema bloqueado por intentos fallidos
+    -- ACCESO: Acceso concedido (clave correcta)
+    -- =========================================================================
+    type estado_type is (CONFIG, VERIF, BLOQUEO, ACCESO);
+    signal estado : estado_type := CONFIG;
+    
+    -- Señales internas de control
+    signal contador_intentos : unsigned(1 downto 0) := "11";  -- Contador de intentos (3 máximo)
+    signal contador_bloqueo  : unsigned(5 downto 0) := (others => '0'); -- Temporizador bloqueo
+    signal btn_comp_prev     : STD_LOGIC := '0';              -- Estado anterior btn_comp (detectar flanco)
+    
+    -- Señales para división de frecuencia
+    signal clk_1hz           : STD_LOGIC := '0';              -- Reloj de 1Hz para temporización
+    signal divisor_count     : unsigned(26 downto 0) := (others => '0'); -- Contador división
+    constant MAX_DIV         : unsigned(26 downto 0) := to_unsigned(99_999_999, 27); -- 100MHz->1Hz
+    
+begin
+
+    -- =========================================================================
+    -- Proceso: Divisor de frecuencia para 1 Hz
+    -- Descripción: Genera un reloj de 1Hz a partir del reloj principal de 100MHz
+    -- =========================================================================
+    process(clk, reset)
+    begin
+        if reset = '1' then
+            divisor_count <= (others => '0');
+            clk_1hz <= '0';
+        elsif rising_edge(clk) then
+            -- Cuando llega al máximo, reinicia y genera pulso
+            if divisor_count = MAX_DIV then
+                divisor_count <= (others => '0');
+                clk_1hz <= '1';
+            else
+                divisor_count <= divisor_count + 1;
+                clk_1hz <= '0';
+            end if;
+        end if;
+    end process;
+
+    -- =========================================================================
+    -- Proceso: Máquina de estados principal
+    -- Descripción: Controla las transiciones entre estados del sistema,
+    --              gestión de intentos y temporizador de bloqueo.
+    -- =========================================================================
+    process(clk, reset)
+    begin
+        -- Reset asíncrono: vuelve al estado inicial
+        if reset = '1' then
+            estado <= CONFIG;
+            contador_intentos <= "11";      -- 3 intentos iniciales
+            contador_bloqueo <= (others => '0');
+            btn_comp_prev <= '0';
+            load_key <= '0';
+            mo_2 <= '0';
+            bloqueo_activo <= '0';
+            
+        -- Flanco de subida del reloj
+        elsif rising_edge(clk) then
+            -- Detección de flanco en btn_comp (para evitar múltiples detecciones)
+            btn_comp_prev <= btn_comp;
+            
+            -- Reset señales de control por defecto (evitan latches)
+            load_key <= '0';
+            mo_2 <= '0';
+            bloqueo_activo <= '0';
+            
+            -- Máquina de estados principal
+            case estado is
+                -- =============================================================
+                -- ESTADO CONFIG: Configuración de nueva clave
+                -- =============================================================
+                when CONFIG =>
+                    if btn_confirmar = '1' then
+                        load_key <= '1';                    -- Activa carga de clave
+                        estado <= VERIF;                    -- Transición a verificación
+                        contador_intentos <= "11";          -- Reinicia intentos (3)
+                    end if;
+                    
+                -- =============================================================
+                -- ESTADO VERIF: Verificación de clave ingresada
+                -- =============================================================
+                when VERIF =>
+                    -- Detección de flanco ascendente en botón comparar
+                    if btn_comp = '1' and btn_comp_prev = '0' then
+                        -- Clave correcta: acceso concedido
+                        if clave_ingresada = clave_almacenada then
+                            estado <= ACCESO;
+                        else
+                            -- Clave incorrecta: decrementa intentos
+                            if contador_intentos > "00" then
+                                contador_intentos <= contador_intentos - 1;
+                            end if;
+                            
+                            -- Si último intento: bloquea sistema
+                            if contador_intentos = "01" then
+                                estado <= BLOQUEO;
+                                contador_bloqueo <= "011110"; -- 30 segundos en binario
+                            end if;
+                        end if;
+                    end if;
+                    
+                    -- Botón config permite volver a configuración desde cualquier estado
+                    if btn_config = '1' then
+                        estado <= CONFIG;
+                    end if;
+                    
+                -- =============================================================
+                -- ESTADO BLOQUEO: Sistema bloqueado temporalmente
+                -- =============================================================
+                when BLOQUEO =>
+                    bloqueo_activo <= '1';                  -- Activa señal de bloqueo
+                    
+                    -- Decrementa temporizador cada segundo
+                    if clk_1hz = '1' then
+                        if contador_bloqueo > "000000" then
+                            contador_bloqueo <= contador_bloqueo - 1;
+                        else
+                            -- Fin del bloqueo: vuelve a verificación
+                            estado <= VERIF;
+                            contador_intentos <= "11";      -- Reinicia intentos
+                        end if;
+                    end if;
+                    
+                -- =============================================================
+                -- ESTADO ACCESO: Acceso concedido
+                -- =============================================================
+                when ACCESO =>
+                    mo_2 <= '1';                            -- Activa señal de acceso
+                    
+                    -- Botón config permite volver a configuración
+                    if btn_config = '1' then
+                        estado <= CONFIG;
+                    end if;
+                    
+            end case;
+        end if;
+    end process;
+
+    -- =========================================================================
+    -- Asignación de salidas continuas
+    -- Descripción: Conversión de señales internas a salidas del módulo
+    -- =========================================================================
+    intentos <= std_logic_vector(contador_intentos);
+    tiempo_restante <= std_logic_vector(contador_bloqueo);
+
+end Behavioral;
