@@ -1,0 +1,51 @@
+-- =============================================================================
+-- Módulo: mo_leds (Módulo de Control de leds)
+-- Propósito: Visualizar el número de intentos restantes mediante patrones
+--            de leds. Proporciona feedback visual inmediato al usuario.
+-- =============================================================================
+
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+
+entity mo_leds is
+    Port ( 
+        -- Entradas de estado del sistema
+        intentos_restantes : in STD_LOGIC_VECTOR (1 downto 0); -- Intentos disponibles
+        modo_bloqueo       : in STD_LOGIC;                    -- Indicador de bloqueo
+        -- Salidas a LEDs físicos
+        leds               : out STD_LOGIC_VECTOR (15 downto 0) -- Banco de 16 leds
+    );
+end mo_leds;
+
+architecture Behavioral of mo_leds is
+begin
+    -- =========================================================================
+    -- Proceso: Control de patrones de leds
+    -- Descripción: Genera diferentes patrones según los intentos restantes
+    --              y el estado de bloqueo del sistema
+    -- =========================================================================
+    process(intentos_restantes, modo_bloqueo)
+    begin
+        -- Si el sistema está bloqueado, apagar todos los leds
+        if modo_bloqueo = '1' then
+            leds <= (others => '0'); -- Todos los leds apagados
+            
+        -- Sistema operativo: mostrar intentos con patrones de leds
+        else
+            case intentos_restantes is
+                when "11" => 
+                    -- 3 intentos: Todos los leds encendidos (16 leds)
+                    leds <= "1111111111111111";
+                when "10" => 
+                    -- 2 intentos: 10 leds encendidos (desde la derecha)
+                    leds <= "0000001111111111";
+                when "01" => 
+                    -- 1 intento: 5 leds encendidos (desde la derecha)  
+                    leds <= "0000000000011111";
+                when others => 
+                    -- 0 intentos o estado inválido: Todos apagados
+                    leds <= "0000000000000000";
+            end case;
+        end if;
+    end process;
+end Behavioral;
