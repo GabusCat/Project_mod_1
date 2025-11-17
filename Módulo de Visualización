@@ -1,0 +1,174 @@
+-- =============================================================================
+-- Módulo: mo_vis (Módulo de Visualización)
+-- Propósito: Controlar la visualización en displays 7-segmentos de 4 dígitos.
+--            Muestra información según el modo de operación del sistema.
+-- =============================================================================
+
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity mo_vis is
+    Port ( 
+        -- Entradas de control
+        clk                 : in STD_LOGIC;                    -- Reloj del sistema
+        -- Entradas de modo de operación
+        modo_config         : in STD_LOGIC;                    -- Modo configuración activo
+        modo_verificacion   : in STD_LOGIC;                    -- Modo verificación activo  
+        modo_bloqueo        : in STD_LOGIC;                    -- Modo bloqueo activo
+        -- Entradas de datos a mostrar
+        clave_actual        : in STD_LOGIC_VECTOR (3 downto 0); -- Clave actual en switches
+        tiempo_restante     : in STD_LOGIC_VECTOR (5 downto 0); -- Tiempo restante de bloqueo
+        intentos_restantes  : in STD_LOGIC_VECTOR (1 downto 0); -- Intentos restantes
+        -- Salidas a displays
+        an                  : out STD_LOGIC_VECTOR (3 downto 0); -- Ánodos (selección display)
+        seg                 : out STD_LOGIC_VECTOR (6 downto 0)  -- Segmentos (dígito a mostrar)
+    );
+end mo_vis;
+
+architecture Behavioral of mo_vis is
+    -- Señales para multiplexación de displays
+    signal refresh_counter  : unsigned(15 downto 0) := (others => '0'); -- Contador refresco
+    signal display_activo   : unsigned(1 downto 0) := "00";             -- Display actual
+    
+    -- Señales para dígitos de cada display
+    signal digito0, digito1, digito2, digito3 : STD_LOGIC_VECTOR(6 downto 0);
+    signal seg_actual       : STD_LOGIC_VECTOR(6 downto 0);             -- Segmentos actuales
+    
+    -- Señales para conversión de tiempo
+    signal tiempo_int       : integer range 0 to 30;                    -- Tiempo como entero
+    signal decenas, unidades : integer range 0 to 9;                    -- Dígitos decimales
+    
+begin
+    -- =========================================================================
+    -- Proceso: Contador de refresco para multiplexación
+    -- Descripción: Genera la señal de refresco para ciclar entre los 4 displays
+    --              evitando parpadeo (persistencia de visión)
+    -- =========================================================================
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            refresh_counter <= refresh_counter + 1;
+        end if;
+    end process;
+    
+    -- Selección del display activo (2 bits más significativos del contador)
+    display_activo <= refresh_counter(15 downto 14);
+
+    -- =========================================================================
+    -- Proceso: Lógica de visualización principal
+    -- Descripción: Determina qué mostrar en cada display según el modo de operación
+    --              y convierte los datos a formato 7-segmentos
+    -- =========================================================================
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            -- Conversión de tiempo restante a dígitos decimales
+            tiempo_int <= to_integer(unsigned(tiempo_restante));
+            decenas <= tiempo_int / 10;    -- Dígito de las decenas
+            unidades <= tiempo_int mod 10; -- Dígito de las unidades
+            
+            -- =================================================================
+            -- Selección de modo de visualización
+            -- =================================================================
+            
+            -- MODO BLOQUEO: Mostrar tiempo restante en 2 displays
+            if modo_bloqueo = '1' then
+                -- Display 3: Decenas del tiempo
+                case decenas is
+                    when 0 => digito3 <= "1000000"; -- 0
+                    when 1 => digito3 <= "1111001"; -- 1
+                    when 2 => digito3 <= "0100100"; -- 2
+                    when 3 => digito3 <= "0110000"; -- 3
+                    when others => digito3 <= "1111111"; -- Apagado
+                end case;
+                
+                -- Display 2: Unidades del tiempo
+                case unidades is
+                    when 0 => digito2 <= "1000000"; -- 0
+                    when 1 => digito2 <= "1111001"; -- 1
+                    when 2 => digito2 <= "0100100"; -- 2
+                    when 3 => digito2 <= "0110000"; -- 3
+                    when 4 => digito2 <= "0011001"; -- 4
+                    when 5 => digito2 <= "0010010"; -- 5
+                    when 6 => digito2 <= "0000010"; -- 6
+                    when 7 => digito2 <= "1111000"; -- 7
+                    when 8 => digito2 <= "0000000"; -- 8
+                    when 9 => digito2 <= "0010000"; -- 9
+                    when others => digito2 <= "1111111"; -- Apagado
+                end case;
+                
+                -- Display 1 y 0: apagados en modo bloqueo
+                digito1 <= "1111111";
+                digito0 <= "1111111";
+                
+            -- MODO CONFIGURACIÓN y VERIFICACIÓN: Mostrar clave en binario
+            elsif modo_config = '1' or modo_verificacion = '1' then
+                -- Display 3: bit 3 (MSB) de la clave
+                if clave_actual(3) = '1' then
+                    digito3 <= "1111001"; -- 1
+                else
+                    digito3 <= "1000000"; -- 0
+                end if;
+                
+                -- Display 2: bit 2 de la clave
+                if clave_actual(2) = '1' then
+                    digito2 <= "1111001"; -- 1
+                else
+                    digito2 <= "1000000"; -- 0
+                end if;
+                
+                -- Display 1: bit 1 de la clave
+                if clave_actual(1) = '1' then
+                    digito1 <= "1111001"; -- 1
+                else
+                    digito1 <= "1000000"; -- 0
+                end if;
+                
+                -- Display 0: bit 0 (LSB) de la clave
+                if clave_actual(0) = '1' then
+                    digito0 <= "1111001"; -- 1
+                else
+                    digito0 <= "1000000"; -- 0
+                end if;
+                
+            -- Estado desconocido: apagar todos los displays
+            else
+                digito3 <= "1111111";
+                digito2 <= "1111111";
+                digito1 <= "1111111";
+                digito0 <= "1111111";
+            end if;
+        end if;
+    end process;
+
+    -- =========================================================================
+    -- Proceso: Multiplexación de displays
+    -- Descripción: Selecciona qué display está activo y qué dígito mostrar
+    --              en cada ciclo de refresco
+    -- =========================================================================
+    process(display_activo, digito0, digito1, digito2, digito3)
+    begin
+        case display_activo is
+            when "00" =>   -- Display 0 (derecha)
+                an <= "1110";          -- Activa solo display 0
+                seg_actual <= digito0; -- Muestra dígito 0
+            when "01" =>   -- Display 1
+                an <= "1101";          -- Activa solo display 1
+                seg_actual <= digito1; -- Muestra dígito 1
+            when "10" =>   -- Display 2
+                an <= "1011";          -- Activa solo display 2
+                seg_actual <= digito2; -- Muestra dígito 2
+            when "11" =>   -- Display 3 (izquierda)
+                an <= "0111";          -- Activa solo display 3
+                seg_actual <= digito3; -- Muestra dígito 3
+            when others =>
+                an <= "1111";          -- Todos apagados
+                seg_actual <= "1111111"; -- Dígito apagado
+        end case;
+    end process;
+
+    -- Asignación de salida de segmentos
+    seg <= seg_actual;
+
+end Behavioral;
