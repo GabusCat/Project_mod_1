@@ -1,0 +1,110 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+
+entity tb_mo_vis is
+end tb_mo_vis;
+
+architecture Behavioral of tb_mo_vis is
+
+    function seg_to_char(segments : STD_LOGIC_VECTOR(6 downto 0)) return character is
+    begin
+        case segments is
+            when "1000000" => return '0';
+            when "1111001" => return '1';
+            when "0100100" => return '2';
+            when "0110000" => return '3';
+            when "0011001" => return '4';
+            when "0010010" => return '5';
+            when "0000010" => return '6';
+            when "1111000" => return '7';
+            when "0000000" => return '8';
+            when "0010000" => return '9';
+            when others => return 'X';
+        end case;
+    end function;
+
+    component mo_vis
+        Port ( clk : in STD_LOGIC;
+               modo_config : in STD_LOGIC;
+               modo_verificacion : in STD_LOGIC;
+               modo_bloqueo : in STD_LOGIC;
+               clave_actual : in STD_LOGIC_VECTOR (3 downto 0);
+               tiempo_restante : in STD_LOGIC_VECTOR (5 downto 0);
+               intentos_restantes : in STD_LOGIC_VECTOR (1 downto 0);
+               an : out STD_LOGIC_VECTOR (3 downto 0);
+               seg : out STD_LOGIC_VECTOR (6 downto 0));
+    end component;
+
+    signal clk : STD_LOGIC := '0';
+    signal modo_config, modo_verificacion, modo_bloqueo : STD_LOGIC := '0';
+    signal clave_actual : STD_LOGIC_VECTOR(3 downto 0) := "0000";
+    signal tiempo_restante : STD_LOGIC_VECTOR(5 downto 0) := "000000";
+    signal intentos_restantes : STD_LOGIC_VECTOR(1 downto 0) := "00";
+    signal an : STD_LOGIC_VECTOR(3 downto 0);
+    signal seg : STD_LOGIC_VECTOR(6 downto 0);
+    
+    constant CLK_PERIOD : time := 10 ns;
+    
+begin
+    uut: mo_vis port map (
+        clk => clk,
+        modo_config => modo_config,
+        modo_verificacion => modo_verificacion,
+        modo_bloqueo => modo_bloqueo,
+        clave_actual => clave_actual,
+        tiempo_restante => tiempo_restante,
+        intentos_restantes => intentos_restantes,
+        an => an,
+        seg => seg
+    );
+    
+    clk_process: process
+    begin
+        clk <= '0';
+        wait for CLK_PERIOD/2;
+        clk <= '1';
+        wait for CLK_PERIOD/2;
+    end process;
+    
+    stim_proc: process
+    begin
+        wait for 100 ns;
+        
+        report "=== SIMULACIÓN SOLO DISPLAY 0 (1110) ===";
+        
+        -- TEST 1: Modo configuración - Display 0 muestra bit 0 de la clave
+        report "--- MODO CONFIGURACIÓN ---";
+        modo_config <= '1';
+        clave_actual <= "1101";  -- Display 0 debería mostrar 1 (bit 0)
+        wait for 200 ns;
+        report "Clave: 1101 - Display 0 muestra: " & seg_to_char(seg) & " (debería ser 1)";
+        wait for 500 ns;
+        
+        clave_actual <= "0110";  -- Display 0 debería mostrar 0 (bit 0)  
+        wait for 200 ns;
+        report "Clave: 0110 - Display 0 muestra: " & seg_to_char(seg) & " (debería ser 0)";
+        wait for 500 ns;
+        
+        -- TEST 2: Modo verificación
+        report "--- MODO VERIFICACIÓN ---";
+        modo_config <= '0';
+        modo_verificacion <= '1';
+        clave_actual <= "1011";  -- Display 0 debería mostrar 1 (bit 0)
+        wait for 200 ns;
+        report "Clave: 1011 - Display 0 muestra: " & seg_to_char(seg) & " (debería ser 1)";
+        wait for 500 ns;
+        
+        -- TEST 3: Modo bloqueo - Display 0 debería estar apagado
+        report "--- MODO BLOQUEO ---";
+        modo_verificacion <= '0';
+        modo_bloqueo <= '1';
+        tiempo_restante <= "011001"; -- 25
+        wait for 200 ns;
+        report "Tiempo: 25 - Display 0 muestra: " & seg_to_char(seg) & " (debería estar apagado - 1111111)";
+        wait for 500 ns;
+        
+        assert false report "=== TODOS LOS TESTS COMPLETADOS ===" severity failure;
+        wait;
+    end process;
+    
+end Behavioral;
