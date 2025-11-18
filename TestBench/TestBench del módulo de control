@@ -1,0 +1,135 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity tb_mo_control is
+end tb_mo_control;
+
+architecture Behavioral of tb_mo_control is
+    component mo_control
+        Port ( clk : in STD_LOGIC;
+               reset : in STD_LOGIC;
+               btn_config : in STD_LOGIC;
+               btn_confirmar : in STD_LOGIC;
+               btn_comp : in STD_LOGIC;
+               clave_ingresada : in STD_LOGIC_VECTOR(3 downto 0);
+               clave_almacenada : in STD_LOGIC_VECTOR(3 downto 0);
+               load_key : out STD_LOGIC;
+               mo_2 : out STD_LOGIC;
+               intentos : out STD_LOGIC_VECTOR(1 downto 0);
+               bloqueo_activo : out STD_LOGIC;
+               tiempo_restante : out STD_LOGIC_VECTOR(5 downto 0));
+    end component;
+
+    signal clk : STD_LOGIC := '0';
+    signal reset : STD_LOGIC := '0';
+    signal btn_config : STD_LOGIC := '0';
+    signal btn_confirmar : STD_LOGIC := '0';
+    signal btn_comp : STD_LOGIC := '0';
+    signal clave_ingresada : STD_LOGIC_VECTOR(3 downto 0) := "0000";
+    signal clave_almacenada : STD_LOGIC_VECTOR(3 downto 0) := "0000";
+    signal load_key : STD_LOGIC;
+    signal mo_2 : STD_LOGIC;
+    signal intentos : STD_LOGIC_VECTOR(1 downto 0);
+    signal bloqueo_activo : STD_LOGIC;
+    signal tiempo_restante : STD_LOGIC_VECTOR(5 downto 0);
+    
+    constant CLK_PERIOD : time := 10 ns;
+    
+begin
+    uut: mo_control port map (
+        clk => clk,
+        reset => reset,
+        btn_config => btn_config,
+        btn_confirmar => btn_confirmar,
+        btn_comp => btn_comp,
+        clave_ingresada => clave_ingresada,
+        clave_almacenada => clave_almacenada,
+        load_key => load_key,
+        mo_2 => mo_2,
+        intentos => intentos,
+        bloqueo_activo => bloqueo_activo,
+        tiempo_restante => tiempo_restante
+    );
+
+    clk_process: process
+    begin
+        clk <= '0';
+        wait for CLK_PERIOD/2;
+        clk <= '1';
+        wait for CLK_PERIOD/2;
+    end process;
+
+    stim_proc: process
+        procedure pulsar_boton(signal boton : out STD_LOGIC) is
+        begin
+            boton <= '1';
+            wait until rising_edge(clk);
+            wait for 1 ns;
+            boton <= '0';
+            wait until rising_edge(clk);
+            wait for 1 ns;
+        end procedure;
+        
+    begin
+        report "=== INICIO TEST: CONTROL PRINCIPAL ===";
+        
+        -- Reset
+        reset <= '1';
+        wait for 100 ns;
+        reset <= '0';
+        wait for 100 ns;
+        
+        -- Test 1: Configurar clave
+        report "TEST 1: Configurar clave 1100";
+        clave_almacenada <= "1100";
+        pulsar_boton(btn_confirmar);
+        
+        -- Esperar y verificar
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        
+        if load_key = '1' then
+            report "? TEST 1 PASADO: load_key activado";
+        else
+            report "? TEST 1 FALLADO: load_key no se activó";
+        end if;
+        
+        wait for 200 ns;
+        
+        -- Test 2: Verificación exitosa
+        report "TEST 2: Verificación exitosa con clave 1100";
+        clave_ingresada <= "1100";
+        pulsar_boton(btn_comp);
+        wait for 200 ns;
+        
+        if mo_2 = '1' then
+            report "? TEST 2 PASADO: mo_2 activado correctamente";
+        else
+            report "? TEST 2 FALLADO: mo_2 no se activó";
+        end if;
+        
+        -- Test 3: Volver a configuración
+        report "TEST 3: Volver a modo configuración";
+        pulsar_boton(btn_config);
+        wait for 200 ns;
+        
+        -- Test 4: Verificación con fallos
+        report "TEST 4: Verificación con intentos fallidos";
+        clave_almacenada <= "1010";
+        pulsar_boton(btn_confirmar);
+        wait for 200 ns;
+        
+        -- Primer intento fallido
+        clave_ingresada <= "1111";
+        pulsar_boton(btn_comp);
+        wait for 200 ns;
+        report "Intento 1 - Intentos restantes: " & 
+               std_logic'image(intentos(1)) & std_logic'image(intentos(0));
+        
+        wait for 500 ns;
+        assert false report "=== TODOS LOS TESTS COMPLETADOS ===" severity failure;
+        wait;
+    end process;
+
+end Behavioral;
