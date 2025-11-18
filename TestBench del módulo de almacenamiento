@@ -1,0 +1,103 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity tb_mo_alm is
+end tb_mo_alm;
+
+architecture Behavioral of tb_mo_alm is
+    component mo_alm
+        Port ( clk : in STD_LOGIC;
+               reset : in STD_LOGIC;
+               Dkey : in STD_LOGIC_VECTOR (3 downto 0);
+               Skey : out STD_LOGIC_VECTOR (3 downto 0);
+               Load : in STD_LOGIC);
+    end component;
+
+    signal clk : STD_LOGIC := '0';
+    signal reset : STD_LOGIC := '0';
+    signal Dkey : STD_LOGIC_VECTOR(3 downto 0) := "0000";
+    signal Skey : STD_LOGIC_VECTOR(3 downto 0);
+    signal Load : STD_LOGIC := '0';
+    
+    constant CLK_PERIOD : time := 10 ns;
+    
+begin
+    uut: mo_alm port map (
+        clk => clk,
+        reset => reset,
+        Dkey => Dkey,
+        Skey => Skey,
+        Load => Load
+    );
+
+    clk_process: process
+    begin
+        clk <= '0';
+        wait for CLK_PERIOD/2;
+        clk <= '1';
+        wait for CLK_PERIOD/2;
+    end process;
+
+    stim_proc: process
+    begin
+        report "=== INICIO TEST: ALMACENAMIENTO DE CLAVE ===";
+        
+        -- Reset
+        reset <= '1';
+        wait for 100 ns;
+        reset <= '0';
+        wait for 100 ns;
+        
+        -- Test 1: Cargar clave "1100"
+        report "TEST 1: Cargar clave 1100";
+        Dkey <= "1100";
+        wait for 20 ns;
+        Load <= '1';
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        Load <= '0';
+        wait for 50 ns;
+        
+        if Skey = "1100" then
+            report "? TEST 1 PASADO: Clave 1100 almacenada correctamente";
+        else
+            report "? TEST 1 FALLADO: Se esperaba 1100, se obtuvo " & 
+                   std_logic'image(Skey(3)) & std_logic'image(Skey(2)) & 
+                   std_logic'image(Skey(1)) & std_logic'image(Skey(0));
+        end if;
+        
+        -- Test 2: Cargar nueva clave "1010"
+        report "TEST 2: Cargar nueva clave 1010";
+        Dkey <= "1010";
+        wait for 20 ns;
+        Load <= '1';
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        Load <= '0';
+        wait for 50 ns;
+        
+        if Skey = "1010" then
+            report "? TEST 2 PASADO: Clave 1010 almacenada correctamente";
+        else
+            report "? TEST 2 FALLADO: Se esperaba 1010, se obtuvo " & 
+                   std_logic'image(Skey(3)) & std_logic'image(Skey(2)) & 
+                   std_logic'image(Skey(1)) & std_logic'image(Skey(0));
+        end if;
+        
+        -- Test 3: Verificar que no cambia sin Load
+        report "TEST 3: Verificar que no cambia sin Load";
+        Dkey <= "1111";
+        wait for 100 ns;
+        
+        if Skey = "1010" then
+            report "? TEST 3 PASADO: Clave se mantiene sin Load";
+        else
+            report "? TEST 3 FALLADO: Clave cambió sin Load";
+        end if;
+        
+        assert false report "=== TODOS LOS TESTS COMPLETADOS ===" severity failure;
+        wait;
+    end process;
+
+end Behavioral;
