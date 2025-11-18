@@ -1,0 +1,106 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity tb_mo_leds is
+end tb_mo_leds;
+
+architecture Behavioral of tb_mo_leds is
+    component mo_leds
+        Port ( intentos_restantes : in STD_LOGIC_VECTOR (1 downto 0);
+               modo_bloqueo : in STD_LOGIC;
+               leds : out STD_LOGIC_VECTOR (15 downto 0));
+    end component;
+
+    signal intentos_restantes : STD_LOGIC_VECTOR(1 downto 0) := "00";
+    signal modo_bloqueo : STD_LOGIC := '0';
+    signal leds : STD_LOGIC_VECTOR(15 downto 0);
+    
+    function leds_to_count(leds_vec : STD_LOGIC_VECTOR(15 downto 0)) return integer is
+        variable count : integer := 0;
+    begin
+        for i in 0 to 15 loop
+            if leds_vec(i) = '1' then
+                count := count + 1;
+            end if;
+        end loop;
+        return count;
+    end function;
+    
+begin
+    uut: mo_leds port map (
+        intentos_restantes => intentos_restantes,
+        modo_bloqueo => modo_bloqueo,
+        leds => leds
+    );
+
+    stim_proc: process
+    begin
+        report "=== INICIO TEST: CONTROL DE LEDs ===";
+        
+        -- Test 1: 3 intentos (todos los LEDs encendidos)
+        report "TEST 1: 3 intentos restantes";
+        intentos_restantes <= "11";
+        modo_bloqueo <= '0';
+        wait for 20 ns;
+        
+        if leds_to_count(leds) = 16 then
+            report "? TEST 1 PASADO: 16 LEDs encendidos";
+        else
+            report "? TEST 1 FALLADO: Se esperaban 16 LEDs, se obtuvieron " & 
+                   integer'image(leds_to_count(leds));
+        end if;
+        
+        -- Test 2: 2 intentos (10 LEDs)
+        report "TEST 2: 2 intentos restantes";
+        intentos_restantes <= "10";
+        wait for 20 ns;
+        
+        if leds_to_count(leds) = 10 then
+            report "? TEST 2 PASADO: 10 LEDs encendidos";
+        else
+            report "? TEST 2 FALLADO: Se esperaban 10 LEDs, se obtuvieron " & 
+                   integer'image(leds_to_count(leds));
+        end if;
+        
+        -- Test 3: 1 intento (5 LEDs)
+        report "TEST 3: 1 intento restante";
+        intentos_restantes <= "01";
+        wait for 20 ns;
+        
+        if leds_to_count(leds) = 5 then
+            report "? TEST 3 PASADO: 5 LEDs encendidos";
+        else
+            report "? TEST 3 FALLADO: Se esperaban 5 LEDs, se obtuvieron " & 
+                   integer'image(leds_to_count(leds));
+        end if;
+        
+        -- Test 4: 0 intentos (0 LEDs)
+        report "TEST 4: 0 intentos restantes";
+        intentos_restantes <= "00";
+        wait for 20 ns;
+        
+        if leds_to_count(leds) = 0 then
+            report "? TEST 4 PASADO: 0 LEDs encendidos";
+        else
+            report "? TEST 4 FALLADO: Se esperaban 0 LEDs, se obtuvieron " & 
+                   integer'image(leds_to_count(leds));
+        end if;
+        
+        -- Test 5: Modo bloqueo (todos apagados)
+        report "TEST 5: Modo bloqueo activo";
+        modo_bloqueo <= '1';
+        intentos_restantes <= "11"; -- Aunque hay intentos, el bloqueo prevalece
+        wait for 20 ns;
+        
+        if leds_to_count(leds) = 0 then
+            report "? TEST 5 PASADO: 0 LEDs en modo bloqueo";
+        else
+            report "? TEST 5 FALLADO: LEDs no se apagaron en bloqueo";
+        end if;
+        
+        assert false report "=== TODOS LOS TESTS COMPLETADOS ===" severity failure;
+        wait;
+    end process;
+
+end Behavioral;
