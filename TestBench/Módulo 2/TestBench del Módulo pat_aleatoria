@@ -1,0 +1,135 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity pat_aleatoria_tb is
+end pat_aleatoria_tb;
+
+architecture behavioral of pat_aleatoria_tb is
+
+    -- Component Declaration
+    component pat_aleatoria
+    port(
+        genn   : in std_logic;
+        clk1   : in std_logic;
+        rstg   : in std_logic;
+        numal  : out std_logic_vector(3 downto 0);
+        seg_7  : out std_logic_vector(7 downto 0);
+        sel    : out std_logic_vector(3 downto 0);
+        leds   : out std_logic_vector(15 downto 0)
+    );
+    end component;
+
+    -- Inputs
+    signal genn : std_logic := '0';
+    signal clk1 : std_logic := '0';
+    signal rstg : std_logic := '0';
+    
+    -- Outputs
+    signal numal : std_logic_vector(3 downto 0);
+    signal seg_7 : std_logic_vector(7 downto 0);
+    signal sel   : std_logic_vector(3 downto 0);
+    signal leds  : std_logic_vector(15 downto 0);
+    
+    -- Clock period definitions
+    constant CLK_PERIOD : time := 10 ns; -- 100 MHz
+
+begin
+
+    -- Instantiate the Unit Under Test (UUT)
+    uut: pat_aleatoria
+    port map (
+        genn => genn,
+        clk1 => clk1,
+        rstg => rstg,
+        numal => numal,
+        seg_7 => seg_7,
+        sel => sel,
+        leds => leds
+    );
+
+    -- Clock process definitions
+    clk_process : process
+    begin
+        clk1 <= '0';
+        wait for CLK_PERIOD/2;
+        clk1 <= '1';
+        wait for CLK_PERIOD/2;
+    end process;
+
+    -- Stimulus process
+    stim_proc: process
+    begin
+        -- Inicialización
+        rstg <= '1';
+        genn <= '0';
+        wait for 100 ns;
+        
+        -- Liberar reset
+        rstg <= '0';
+        wait for 100 ns;
+        
+        -- Esperar un poco antes de iniciar la secuencia
+        wait for 500 ns;
+        
+        -- Activar generación (genn='1') para iniciar secuencia de 3 segundos
+        genn <= '1';
+        wait for 50 ns;
+        genn <= '0';  -- Pulsación corta
+        
+        -- Esperar a que termine la secuencia de 3 segundos
+        wait for 3.1 sec;
+        
+        -- Activar genn nuevamente para obtener número aleatorio
+        genn <= '1';
+        wait for 50 ns;
+        genn <= '0';
+        
+        -- Esperar y repetir el proceso varias veces
+        wait for 1 sec;
+        
+        genn <= '1';
+        wait for 50 ns;
+        genn <= '0';
+        
+        wait for 3.1 sec;
+        
+        genn <= '1';
+        wait for 50 ns;
+        genn <= '0';
+        
+        -- Probar reset durante operación
+        wait for 1 sec;
+        rstg <= '1';
+        wait for 100 ns;
+        rstg <= '0';
+        
+        -- Última prueba
+        wait for 500 ns;
+        genn <= '1';
+        wait for 50 ns;
+        genn <= '0';
+        
+        wait for 1 sec;
+        rstg <= '1';
+        wait for 100 ns;
+        genn <= '1';
+        wait for 1000 ns;
+        genn <='0';
+        
+        wait for 3.1 sec;
+        
+        -- Finalizar simulación
+        wait for 1 sec;
+        assert false report "Simulación completada" severity note;
+        wait;
+    end process;
+
+    -- Monitor process para observar cambios
+    monitor_proc: process
+    begin
+        wait for 1 ns; -- Pequeño delay para evitar condiciones de carrera
+wait;
+    end process;
+
+end behavioral;
