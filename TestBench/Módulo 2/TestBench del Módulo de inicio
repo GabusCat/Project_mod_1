@@ -1,0 +1,161 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity tb_inicio is
+end tb_inicio;
+
+architecture testbench of tb_inicio is
+
+    component inicio
+    port(
+        numin: in std_logic_vector(3 downto 0);
+        seg_7 : out std_logic_vector(7 downto 0);
+        leds : out std_logic_vector(15 downto 0);
+        sel: out std_logic_vector(3 downto 0);
+        clk: in std_logic;
+        conf: in std_logic;
+        next2 : out std_logic  -- Nueva señal para siguiente etapa
+    );
+    end component;
+
+    -- Señales del testbench
+    signal numin_tb : std_logic_vector(3 downto 0) := "0000";
+    signal seg_7_tb : std_logic_vector(7 downto 0);
+    signal leds_tb : std_logic_vector(15 downto 0);
+    signal sel_tb : std_logic_vector(3 downto 0);
+    signal clk_tb : std_logic := '0';
+    signal conf_tb : std_logic := '0';
+    signal next2_tb : std_logic;  -- Señal añadida
+    
+    -- Constantes
+    constant CLK_PERIOD : time := 10 ns;  -- 100 MHz
+
+begin
+
+    -- Instanciación del Unit Under Test (UUT)
+    uut: inicio port map(
+        numin => numin_tb,
+        seg_7 => seg_7_tb,
+        leds => leds_tb,
+        sel => sel_tb,
+        clk => clk_tb,
+        conf => conf_tb,
+        next2 => next2_tb  -- Conexión añadida
+    );
+
+    -- Generación de reloj
+    clk_process : process
+    begin
+        while now < 10 sec loop
+            clk_tb <= '0';
+            wait for CLK_PERIOD/2;
+            clk_tb <= '1';
+            wait for CLK_PERIOD/2;
+        end loop;
+        wait;
+    end process;
+
+    -- Proceso de estimulación principal
+    stimulus : process
+    begin
+        -- Esperar inicialización
+        wait for 100 ns;
+        
+        -- Esperar fase de parpadeo inicial (1 segundo según tu código corregido)
+        wait for 1.1 sec;  -- Un poco más para asegurar
+        
+        -- Primer intento: ingresar número 7
+        numin_tb <= "0111";  -- Número 7
+        wait for 100 ns;
+        conf_tb <= '1';
+        wait for CLK_PERIOD * 10;
+        conf_tb <= '0';
+        numin_tb <= "0000";
+        
+        -- Esperar que muestre SURE (2 segundos)
+        wait for 2.1 sec;
+        
+        -- Esperar que muestre .?.? (1 segundo)
+        wait for 1.1 sec;
+        
+        -- Segunda confirmación para continuar
+        conf_tb <= '1';
+        wait for CLK_PERIOD * 10;
+        conf_tb <= '0';
+        
+        -- Verificar si next2 se activa
+        wait for 100 ns;
+        if next2_tb = '1' then
+            report "Primera etapa terminada correctamente" severity note;
+        else
+            report "Error: next2 no se activó después de la primera confirmación" severity warning;
+        end if;
+        
+        -- Esperar un poco en estado de espera
+        wait for 1 sec;
+        
+        -- Reiniciar para segunda prueba (simulando reset del sistema superior)
+        -- En un sistema real, esto lo controlaría el módulo superior
+        
+        -- Segundo intento: ingresar número 12
+        numin_tb <= "1100";  -- Número 12
+        wait for 100 ns;
+        conf_tb <= '1';
+        wait for CLK_PERIOD * 10;
+        conf_tb <= '0';
+        numin_tb <= "0000";
+        
+        -- Esperar que muestre SURE (2 segundos)
+        wait for 2.1 sec;
+        
+        -- Esperar que muestre .?.? (1 segundo)
+        wait for 1.1 sec;
+        
+        -- Tercera confirmación para continuar
+        conf_tb <= '1';
+        wait for CLK_PERIOD * 10;
+        conf_tb <= '0';
+        
+        -- Verificar next2 nuevamente
+        wait for 100 ns;
+        if next2_tb = '1' then
+            report "Segunda etapa terminada correctamente" severity note;
+        else
+            report "Error: next2 no se activó después de la segunda confirmación" severity warning;
+        end if;
+        
+        -- Tercer intento: ingresar número 9 (corregido de "1001" en lugar de "0000")
+        wait for 2 sec;
+        numin_tb <= "1001";  -- Número 9
+        wait for 100 ns;
+        conf_tb <= '1';
+        wait for CLK_PERIOD * 10;
+        conf_tb <= '0';
+        numin_tb <= "0000";
+        
+        -- Esperar que muestre SURE y .?.?
+        wait for 3.2 sec;
+        
+        -- No confirmar esta vez para ver el comportamiento en espera
+        wait for 3 sec;
+        
+        -- Finalmente confirmar para terminar
+        conf_tb <= '1';
+        wait for CLK_PERIOD * 10;
+        conf_tb <= '0';
+        
+        wait for 100 ns;
+        if next2_tb = '1' then
+            report "Tercera etapa terminada correctamente" severity note;
+        else
+            report "Error: next2 no se activó después de la tercera confirmación" severity warning;
+        end if;
+        
+        -- Finalizar simulación
+        wait for 1 sec;
+        report "Simulación completada" severity note;
+        wait;
+    end process;
+
+end testbench;
