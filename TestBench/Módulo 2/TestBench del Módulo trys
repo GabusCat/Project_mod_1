@@ -1,0 +1,123 @@
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
+
+entity trys_tb is
+end trys_tb;
+
+architecture testbench of trys_tb is
+    component trys
+    port(
+        numin: in std_logic_vector(3 downto 0);
+        clk1 : in std_logic;
+        seg_7 : out std_logic_vector(7 downto 0);
+        sel : out std_logic_vector(3 downto 0);
+        leds : out std_logic_vector(15 downto 0);
+        next3: out std_logic;
+        numtry: out integer;
+        numal: in std_logic_vector(3 downto 0);
+        exito: out boolean;
+        conf: in std_logic;
+        rstg: in std_logic
+    );
+    end component;
+
+    signal clk1 : std_logic := '0';
+    signal numin : std_logic_vector(3 downto 0) := "0000";
+    signal seg_7 : std_logic_vector(7 downto 0);
+    signal sel : std_logic_vector(3 downto 0);
+    signal leds : std_logic_vector(15 downto 0);
+    signal next3 : std_logic;
+    signal numtry : integer;
+    signal numal : std_logic_vector(3 downto 0) := "0101"; -- Número a adivinar: 5
+    signal exito : boolean;
+    signal conf : std_logic := '0';
+    signal rstg : std_logic := '0';
+    
+    constant CLK_PERIOD : time := 10 ns;
+    signal sim_finished : boolean := false;
+    
+begin
+    uut: trys port map(
+        numin => numin,
+        clk1 => clk1,
+        seg_7 => seg_7,
+        sel => sel,
+        leds => leds,
+        next3 => next3,
+        numtry => numtry,
+        numal => numal,
+        exito => exito,
+        conf => conf,
+        rstg => rstg
+    );
+    
+    clk_process: process
+    begin
+        while not sim_finished loop
+            clk1 <= '0';
+            wait for CLK_PERIOD/2;
+            clk1 <= '1';
+            wait for CLK_PERIOD/2;
+        end loop;
+        wait;
+    end process;
+    
+    stimulus: process
+    begin
+        -- Reset inicial
+        rstg <= '1';
+        wait for 100 ns;
+        rstg <= '0';
+        wait for 100 ns;
+        
+        -- Primer intento: numero menor (3) muestra SUBE
+        numin <= "0011"; -- 3
+        wait for 100 ns;
+        conf <= '1';
+        wait for CLK_PERIOD * 2;
+        conf <= '0';
+        numin <= "0000";
+        wait for 3 sec;
+        
+        -- Segundo intento: numero mayor (7) muestra BAJA
+        numin <= "0111"; -- 7
+        wait for 100 ns;
+        conf <= '1';
+        wait for CLK_PERIOD * 2;
+        conf <= '0';
+        numin <= "0000";
+        wait for 3 sec;
+        
+        -- Tercer intento: numero menor (4) muestra SUBE
+        numin <= "0100"; -- 4
+        wait for 100 ns;
+        conf <= '1';
+        wait for CLK_PERIOD * 2;
+        conf <= '0';
+        numin <= "0000";
+        wait for 3 sec;
+        
+        -- Cuarto intento: numero mayor (6) muestra BAJA
+        numin <= "0110"; -- 6
+        wait for 100 ns;
+        conf <= '1';
+        wait for CLK_PERIOD * 2;
+        conf <= '0';
+        numin <= "0000";
+        wait for 3 sec;
+        
+        -- Quinto intento: acierto (5) muestra OOH
+        numin <= "0101"; -- 5
+        wait for 100 ns;
+        conf <= '1';
+        wait for CLK_PERIOD * 2;
+        conf <= '0';
+        numin <= "0000";
+        wait for 4 sec;
+        
+        sim_finished <= true;
+        wait;
+    end process;
+
+end testbench;
