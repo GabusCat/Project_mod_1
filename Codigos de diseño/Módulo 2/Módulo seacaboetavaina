@@ -1,0 +1,307 @@
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
+
+entity seacaboetavaina is
+port(
+    clk: in std_logic;
+    seg_7: out std_logic_vector(7 downto 0);
+    sel: out std_logic_vector(3 downto 0);
+    leds: out std_logic_vector(15 downto 0);
+    numtry: in integer;
+    numin: in std_logic_vector(3 downto 0);
+    rstg: out std_logic;
+    exito: in boolean
+);
+end seacaboetavaina;
+
+architecture structural of seacaboetavaina is
+    signal counter_3s : natural := 0;
+    signal counter_5s : natural := 0;
+    signal counter_15s : natural := 0;
+    signal counter_1s : natural := 0;
+    signal counter_display : natural := 0;
+    signal display_index : natural range 0 to 3 := 0;
+    signal led_blink : std_logic := '0';
+    signal led_block_blink : std_logic := '0';
+    signal estado : natural range 0 to 5 := 0;
+    signal seg_count : natural range 0 to 15 := 15;
+    signal numin_latched : std_logic_vector(3 downto 0) := "0000";
+    
+    -- Señales para control de activación
+    signal juego_terminado : boolean := false;
+    signal exito_registrado : boolean := false;
+    signal numtry_registrado : integer := 0;
+    signal conteo_iniciado : boolean := false;
+    
+    constant TIME_3S : natural := 300000000;
+    constant TIME_5S : natural := 500000000;
+    constant TIME_15S : natural := 1500000000;
+    constant TIME_1S : natural := 100000000;
+    constant TIME_0_5S : natural := 50000000;
+    constant TIME_2_5MS : natural := 250000;
+    
+    signal seg_7_reg : std_logic_vector(7 downto 0) := (others => '1');
+    signal sel_reg : std_logic_vector(3 downto 0) := (others => '1');
+    signal leds_reg : std_logic_vector(15 downto 0) := (others => '0');
+    signal rstg_reg : std_logic := '0';
+
+    function num_to_seg(num: integer) return std_logic_vector is
+    begin
+        case num is
+            when 0 => return "00000011";
+            when 1 => return "10011111";
+            when 2 => return "00100101";
+            when 3 => return "00001101";
+            when 4 => return "10011001";
+            when 5 => return "01001001";
+            when 6 => return "01000001";
+            when 7 => return "00011111";
+            when 8 => return "00000001";
+            when 9 => return "00001001";
+            when others => return "11111111";
+        end case;
+    end function;
+
+begin
+
+    seg_7 <= seg_7_reg;
+    sel <= sel_reg;
+    leds <= leds_reg;
+    rstg <= rstg_reg;
+
+    process(clk)
+        variable decenas : integer range 0 to 1;
+        variable unidades : integer range 0 to 9;
+    begin
+        if rising_edge(clk) then
+            rstg_reg <= '0';
+            leds_reg <= (others => '0');
+            
+            -- Detectar cuando el juego termina (solo una vez)
+            if estado = 0 and not juego_terminado then
+                if (numtry >= 5 and exito = false) or exito = true then
+                    juego_terminado <= true;
+                    exito_registrado <= exito;
+                    numtry_registrado <= numtry;
+                end if;
+            end if;
+            
+            if estado = 4 and numin /= "0000" then
+                numin_latched <= numin;
+            end if;
+            
+            if seg_count >= 10 then
+                decenas := 1;
+                unidades := seg_count - 10;
+            else
+                decenas := 0;
+                unidades := seg_count;
+            end if;
+            
+            case estado is
+                when 0 =>  -- Estado de espera
+                    seg_7_reg <= (others => '1');
+                    sel_reg <= (others => '1');
+                    counter_display <= 0;
+                    display_index <= 0;
+                    counter_3s <= 0;
+                    counter_5s <= 0;
+                    counter_15s <= 0;
+                    counter_1s <= 0;
+                    seg_count <= 15;  -- Siempre reiniciar a 15 en estado de espera
+                    led_blink <= '0';
+                    led_block_blink <= '0';
+                    numin_latched <= "0000";
+                    conteo_iniciado <= false;
+                    
+                    -- Solo activar si el juego ha terminado
+                    if juego_terminado then
+                        if exito_registrado then
+                            estado <= 2;  -- OOH! (éxito)
+                            counter_3s <= 0;
+                        else
+                            estado <= 1;  -- FAIL
+                            counter_3s <= 0;
+                        end if;
+                    end if;
+                    
+                when 1 =>  -- FAIL
+                    counter_3s <= counter_3s + 1;
+                    counter_display <= counter_display + 1;
+                    
+                    if counter_display >= TIME_2_5MS then
+                        counter_display <= 0;
+                        case display_index is
+                            when 0 =>
+                                seg_7_reg <= "01110001"; -- F
+                                sel_reg <= "0111";
+                                leds_reg <= (others => '1');
+                            when 1 =>
+                                seg_7_reg <= "00010001"; -- A
+                                sel_reg <= "1011";
+                            when 2 =>
+                                seg_7_reg <= "10011111"; -- I
+                                sel_reg <= "1101";
+                            when 3 =>
+                                seg_7_reg <= "11100011"; -- L
+                                sel_reg <= "1110";
+                            when others =>
+                                seg_7_reg <= (others => '1');
+                                sel_reg <= (others => '1');
+                        end case;
+                        
+                        if display_index = 3 then
+                            display_index <= 0;
+                        else
+                            display_index <= display_index + 1;
+                        end if;
+                    end if;
+                    
+                    if counter_3s >= TIME_3S then
+                        estado <= 3;  -- Ir a bloqueo
+                        counter_15s <= 0;
+                        seg_count <= 15;  -- Reiniciar contador a 15
+                        conteo_iniciado <= true;
+                    end if;
+                    
+                when 2 =>  -- OOH! (éxito)
+                    counter_3s <= counter_3s + 1;
+                    counter_display <= counter_display + 1;
+                    
+                    if counter_display >= TIME_2_5MS then
+                        counter_display <= 0;
+                        case display_index is
+                            when 0 =>
+                                seg_7_reg <= "00000011"; -- O
+                                sel_reg <= "0111";
+                                leds_reg <= (others => '1');
+                            when 1 =>
+                                seg_7_reg <= "00000011"; -- O
+                                sel_reg <= "1011";
+                            when 2 =>
+                                seg_7_reg <= "10010001"; -- H
+                                sel_reg <= "1101";
+                            when 3 =>
+                                seg_7_reg <= "10011110"; -- !
+                                sel_reg <= "1110";
+                            when others =>
+                                seg_7_reg <= (others => '1');
+                                sel_reg <= (others => '1');
+                        end case;
+                        
+                        if display_index = 3 then
+                            display_index <= 0;
+                        else
+                            display_index <= display_index + 1;
+                        end if;
+                    end if;
+                    
+                    if counter_3s >= TIME_3S then
+                        estado <= 4;  -- Ir a parpadeo de LEDs
+                        counter_5s <= 0;
+                        led_blink <= '1';
+                    end if;
+                    
+                when 3 =>  -- Bloqueo con cuenta regresiva
+                    -- Solo iniciar el conteo cuando entramos a este estado
+                    if not conteo_iniciado then
+                        seg_count <= 15;
+                        conteo_iniciado <= true;
+                    end if;
+                    
+                    counter_15s <= counter_15s + 1;
+                    counter_display <= counter_display + 1;
+                    counter_1s <= counter_1s + 1;
+                    
+                    if counter_display >= TIME_2_5MS then
+                        counter_display <= 0;
+                        case display_index is
+                            when 0 => 
+                                seg_7_reg <= (others => '1');
+                                sel_reg <= "0111";
+                            when 1 =>
+                                seg_7_reg <= (others => '1');
+                                sel_reg <= "1011";
+                            when 2 =>
+                                seg_7_reg <= num_to_seg(decenas);
+                                sel_reg <= "1101";
+                            when 3 =>
+                                seg_7_reg <= num_to_seg(unidades);
+                                sel_reg <= "1110";
+                            when others =>
+                                seg_7_reg <= (others => '1');
+                                sel_reg <= (others => '1');
+                        end case;
+                        
+                        if display_index = 3 then
+                            display_index <= 0;
+                        else
+                            display_index <= display_index + 1;
+                        end if;
+                    end if;
+                    
+                    if numin_latched /= "0000" then
+                        if counter_1s >= TIME_0_5S then
+                            counter_1s <= 0;
+                            led_block_blink <= not led_block_blink;
+                        end if;
+                    end if;
+                    
+                    if led_block_blink = '1' then
+                        leds_reg <= (others => '1');
+                    end if;
+                    
+                    -- Actualizar cuenta regresiva cada segundo
+                    if counter_15s mod TIME_1S = 0 and counter_15s > 0 then
+                        if seg_count > 0 then
+                            seg_count <= seg_count - 1;
+                        end if;
+                    end if;
+                    
+                    if counter_15s >= TIME_15S then
+                        estado <= 5;  -- Reinicio
+                    end if;
+                    
+                when 4 =>  -- Parpadeo de LEDs por éxito
+                    counter_5s <= counter_5s + 1;
+                    counter_1s <= counter_1s + 1;
+                    
+                    if counter_1s >= TIME_1S then
+                        counter_1s <= 0;
+                        led_blink <= not led_blink;
+                    end if;
+                    
+                    if led_blink = '1' then
+                        leds_reg <= (others => '1');
+                    end if;
+                    
+                    seg_7_reg <= (others => '1');
+                    sel_reg <= (others => '1');
+                    
+                    if counter_5s >= TIME_5S then
+                        estado <= 3;  -- Ir a bloqueo
+                        counter_15s <= 0;
+                        seg_count <= 15;  -- Reiniciar contador a 15
+                        conteo_iniciado <= true;
+                    end if;
+                    
+                when 5 =>  -- Reinicio
+                    rstg_reg <= '1';
+                    estado <= 0;
+                    seg_count <= 15;
+                    juego_terminado <= false;
+                    exito_registrado <= false;
+                    conteo_iniciado <= false;
+                    
+                when others =>
+                    estado <= 0;
+                    rstg_reg <= '0';
+                    juego_terminado <= false;
+                    conteo_iniciado <= false;
+                    
+            end case;
+        end if;
+    end process;
+
+end structural;
