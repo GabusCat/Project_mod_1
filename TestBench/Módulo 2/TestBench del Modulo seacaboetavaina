@@ -1,0 +1,97 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity tb_seacaboetavaina is
+end tb_seacaboetavaina;
+
+architecture Behavioral of tb_seacaboetavaina is
+
+    component seacaboetavaina
+    port(
+        clk : in STD_LOGIC;
+        seg_7 : out STD_LOGIC_VECTOR(7 downto 0);
+        sel : out STD_LOGIC_VECTOR(3 downto 0);
+        leds : out STD_LOGIC_VECTOR(15 downto 0);
+        numtry : in integer;
+        numin : in STD_LOGIC_VECTOR(3 downto 0);
+        rstg : out STD_LOGIC
+    );
+    end component;
+
+    signal clk : STD_LOGIC := '0';
+    signal seg_7 : STD_LOGIC_VECTOR(7 downto 0);
+    signal sel : STD_LOGIC_VECTOR(3 downto 0);
+    signal leds : STD_LOGIC_VECTOR(15 downto 0);
+    signal numtry : integer := 0;
+    signal numin : STD_LOGIC_VECTOR(3 downto 0) := "0000";
+    signal rstg : STD_LOGIC := '0';
+    
+    constant CLK_PERIOD : time := 10 ns;
+    signal stop_simulation : boolean := false;
+
+begin
+
+    uut: seacaboetavaina
+    port map(
+        clk => clk,
+        seg_7 => seg_7,
+        sel => sel,
+        leds => leds,
+        numtry => numtry,
+        numin => numin,
+        rstg => rstg
+    );
+
+    -- Proceso de reloj
+    clock_process: process
+    begin
+        while not stop_simulation loop
+            clk <= '0';
+            wait for CLK_PERIOD/2;
+            clk <= '1';
+            wait for CLK_PERIOD/2;
+        end loop;
+        wait;
+    end process;
+
+    -- Proceso de estímulo
+    stim_process: process
+    begin
+        -- Inicialización
+        wait for 1000 ns;
+        
+        -- Escenario 1: Activar fallo
+        numtry <= 5;
+        numin <= "0000";
+        
+        -- Esperar un tiempo para ver el estado FAIL
+        wait for 10000000 ns; -- 10ms
+        
+        -- Intentar ingresar durante FAIL
+        numin <= "1101";
+        wait for 5000000 ns; -- 5ms
+        numin <= "0000";
+        
+        -- Esperar a que termine FAIL (3 segundos)
+        wait for 3000 ms; -- 3 segundos
+        
+        -- Intentar ingresar durante bloqueo
+        numin <= "0110";
+        wait for 10000000 ns; -- 10ms
+        numin <= "0000";
+        
+        -- Esperar a que termine bloqueo (15 segundos)
+        wait for 15000 ms; -- 15 segundos
+        
+        -- Verificar que rstg se activó
+        if rstg = '1' then
+            wait for 1 ms; -- 1ms adicional
+        end if;
+        
+        -- Finalizar simulación
+        stop_simulation <= true;
+        wait;
+    end process;
+
+end Behavioral;
