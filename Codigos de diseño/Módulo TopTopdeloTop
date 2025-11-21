@@ -1,0 +1,184 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity TOPTOPDELOTOP is
+    Port ( 
+        clk     : in STD_LOGIC;                    -- Reloj de 100 MHz
+        switch  : in STD_LOGIC_VECTOR(3 downto 0); -- Switches para ambos módulos
+        btn1    : in STD_LOGIC;                    -- Botón 1 (multiplexado)
+        btn2    : in STD_LOGIC;                    -- Botón 2 (multiplexado)  
+        btn3    : in STD_LOGIC;                    -- Botón 3 (multiplexado)
+        btn4    : in STD_LOGIC;                    -- Botón 4 (multiplexado)
+        resetall: in STD_LOGIC;                    -- Reset global que reinicia todo a etapa 1
+        selec   : out STD_LOGIC_VECTOR(3 downto 0);-- Selector de displays
+        seg7    : out STD_LOGIC_VECTOR(7 downto 0);-- Control de 7 segmentos + punto decimal
+        leds    : out STD_LOGIC_VECTOR(15 downto 0)-- Control de 16 LEDs
+    );
+end TOPTOPDELOTOP;
+
+architecture Behavioral of TOPTOPDELOTOP is
+
+    -- Componente del módulo 1 (contraseña)
+    component mo_top
+        Port ( 
+            clk          : in STD_LOGIC;
+            reset        : in STD_LOGIC;
+            btn_config   : in STD_LOGIC;
+            btn_confirmar: in STD_LOGIC;
+            btn_comp     : in STD_LOGIC;
+            switches     : in STD_LOGIC_VECTOR(3 downto 0);
+            an           : out STD_LOGIC_VECTOR(3 downto 0);
+            seg          : out STD_LOGIC_VECTOR(6 downto 0);
+            leds         : out STD_LOGIC_VECTOR(15 downto 0);
+            mo_2         : out STD_LOGIC
+        );
+    end component;
+
+    -- Componente del módulo 2 (juego)
+    component juego_top
+        Port (
+            numin  : in STD_LOGIC_VECTOR(3 downto 0);
+            conf   : in STD_LOGIC;
+            rstg   : in STD_LOGIC;
+            clk    : in STD_LOGIC;
+            genn   : in STD_LOGIC;
+            seg_7  : out STD_LOGIC_VECTOR(7 downto 0);
+            sel    : out STD_LOGIC_VECTOR(3 downto 0);
+            leds   : out STD_LOGIC_VECTOR(15 downto 0)
+        );
+    end component;
+
+    -- Señales internas
+    signal mo_2_signal : STD_LOGIC := '0';
+    signal etapa_actual : STD_LOGIC := '0'; -- '0' = Módulo 1, '1' = Módulo 2
+    
+    -- Señales para multiplexación de botones con detección de flanco
+    signal reset_mod1, btn_config, btn_confirmar, btn_comp : STD_LOGIC;
+    signal reset_mod2, conf_mod2, genn_mod2 : STD_LOGIC;
+    
+    -- Señales de salida de cada módulo
+    signal selec_mod1, selec_mod2 : STD_LOGIC_VECTOR(3 downto 0);
+    signal seg7_mod1 : STD_LOGIC_VECTOR(6 downto 0);
+    signal seg7_mod2 : STD_LOGIC_VECTOR(7 downto 0);
+    signal leds_mod1, leds_mod2 : STD_LOGIC_VECTOR(15 downto 0);
+
+    -- Señal temporal para seg7
+    signal seg7_temp : STD_LOGIC_VECTOR(7 downto 0);
+
+    -- Detección de flancos para botones
+    signal btn1_prev, btn2_prev, btn3_prev, btn4_prev, resetall_prev : STD_LOGIC := '0';
+    signal btn1_pulse, btn2_pulse, btn3_pulse, btn4_pulse, resetall_pulse : STD_LOGIC;
+
+begin
+
+    -- Detección de flancos de subida para todos los botones
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            btn1_prev <= btn1;
+            btn2_prev <= btn2;
+            btn3_prev <= btn3;
+            btn4_prev <= btn4;
+            resetall_prev <= resetall;
+        end if;
+    end process;
+
+    -- Generación de pulsos cortos (1 ciclo de reloj)
+    btn1_pulse <= btn1 and not btn1_prev;
+    btn2_pulse <= btn2 and not btn2_prev;
+    btn3_pulse <= btn3 and not btn3_prev;
+    btn4_pulse <= btn4 and not btn4_prev;
+    resetall_pulse <= resetall and not resetall_prev;
+
+    -- Multiplexación de botones según la etapa actual
+    process(etapa_actual, btn1_pulse, btn2_pulse, btn3_pulse, btn4_pulse)
+    begin
+        if etapa_actual = '0' then
+            -- Módulo 1: Contraseña
+            reset_mod1    <= btn1_pulse;  -- Reset del módulo 1 (solo pulso)
+            btn_config    <= btn2_pulse;  -- Configurar (solo pulso)
+            btn_confirmar <= btn3_pulse;  -- Confirmar clave (solo pulso)
+            btn_comp      <= btn4_pulse;  -- Completar/comparar (solo pulso)
+            
+            -- Módulo 2 desactivado
+            reset_mod2 <= '0';
+            conf_mod2  <= '0';
+            genn_mod2  <= '0';
+        else
+            -- Módulo 2: Juego
+            reset_mod2 <= btn1_pulse;  -- Reset del módulo 2 (solo pulso)
+            conf_mod2  <= btn2_pulse;  -- Confirmar (solo pulso)
+            genn_mod2  <= btn3_pulse;  -- Generar número aleatorio (solo pulso)
+            
+            -- Módulo 1 desactivado
+            reset_mod1    <= '0';
+            btn_config    <= '0';
+            btn_confirmar <= '0';
+            btn_comp      <= '0';
+        end if;
+    end process;
+
+    -- Control de cambio de etapa usando mo_2 como indicador
+    process(clk, resetall_pulse)
+    begin
+        if resetall_pulse = '1' then
+            -- Reset global: volver siempre a etapa 1 al PRESIONAR el botón
+            etapa_actual <= '0';
+        elsif rising_edge(clk) then
+            -- Cuando mo_2 se activa, pasar al módulo 2
+            if mo_2_signal = '1' then
+                etapa_actual <= '1';
+            end if;
+            -- reset_mod2 no afecta la etapa actual, solo reinicia el módulo 2 internamente
+        end if;
+    end process;
+
+    -- Instanciación del módulo 1 (contraseña) - Reset solo del módulo 1
+    MODULO1: mo_top
+        port map (
+            clk          => clk,
+            reset        => reset_mod1,  
+            btn_config   => btn_config,
+            btn_confirmar => btn_confirmar,
+            btn_comp     => btn_comp,
+            switches     => switch,
+            an           => selec_mod1,
+            seg          => seg7_mod1,
+            leds         => leds_mod1,
+            mo_2         => mo_2_signal          -- Señal que indica fin de etapa 1
+        );
+
+    -- Instanciación del módulo 2 (juego) - Reset solo del módulo 2
+    MODULO2: juego_top
+        port map (
+            numin  => switch,
+            conf   => conf_mod2,
+            rstg   => reset_mod2,                -- Solo reset del módulo 2
+            clk    => clk,
+            genn   => genn_mod2,
+            seg_7  => seg7_mod2,
+            sel    => selec_mod2,
+            leds   => leds_mod2
+        );
+
+    -- Multiplexación de salidas según la etapa actual
+    process(etapa_actual, selec_mod1, selec_mod2, seg7_mod1, seg7_mod2, leds_mod1, leds_mod2)
+    begin
+        if etapa_actual = '0' then
+            -- Salidas del módulo 1 (contraseña)
+            selec <= selec_mod1;
+            seg7_temp <= '1' & seg7_mod1;  -- Agregar '1' al bit más significativo (punto apagado)
+            leds  <= leds_mod1;
+        else
+            -- Salidas del módulo 2 (juego)
+            selec <= selec_mod2;
+            seg7_temp <= seg7_mod2;        -- Usar los 8 bits directamente
+            leds  <= leds_mod2;
+        end if;
+    end process;
+
+    -- Asignación final de seg7
+    seg7 <= seg7_temp;
+
+end Behavioral;
