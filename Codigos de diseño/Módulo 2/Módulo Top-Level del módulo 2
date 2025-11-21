@@ -1,0 +1,225 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity juego_top is
+port(
+    numin   : in std_logic_vector(3 downto 0);
+    conf    : in std_logic;
+    rstg    : in std_logic;
+    clk     : in std_logic;  -- 100 MHz
+    genn    : in std_logic;
+    seg_7   : out std_logic_vector(7 downto 0);
+    sel     : out std_logic_vector(3 downto 0);
+    leds    : out std_logic_vector(15 downto 0)
+);
+end juego_top;
+
+architecture structural of juego_top is
+
+    -- Componente para parte 1 - Generación aleatoria
+    component pat_aleatoria
+    port(
+        genn   : in std_logic;
+        clk1   : in std_logic;
+        rstg   : in std_logic;
+        numal  : out std_logic_vector(3 downto 0);
+        seg_7  : out std_logic_vector(7 downto 0);
+        sel    : out std_logic_vector(3 downto 0);
+        leds   : out std_logic_vector(15 downto 0);
+        etapa1_activa : out std_logic
+    );
+    end component;
+
+    -- Componente para parte 2 - Inicio y confirmación
+    component inicio
+    port(
+        numin  : in std_logic_vector(3 downto 0);
+        seg_7  : out std_logic_vector(7 downto 0);
+        leds   : out std_logic_vector(15 downto 0);
+        sel    : out std_logic_vector(3 downto 0);
+        clk    : in std_logic;
+        conf   : in std_logic;
+        next2  : out std_logic
+    );
+    end component;
+
+    -- Componente para parte 3 - Intentos y retroalimentación
+    component trys
+    port(
+        numin   : in std_logic_vector(3 downto 0);
+        clk1    : in std_logic;
+        seg_7   : out std_logic_vector(7 downto 0);
+        sel     : out std_logic_vector(3 downto 0);
+        leds    : out std_logic_vector(15 downto 0);
+        next3   : out std_logic;
+        numtry  : out integer;
+        numal   : in std_logic_vector(3 downto 0);
+        exito   : out boolean;
+        conf : in std_logic;
+        rstg : in std_logic
+    );
+    end component;
+
+    -- Componente para parte 4 - Final del juego
+    component seacaboetavaina
+    port(
+        clk     : in std_logic;
+        seg_7   : out std_logic_vector(7 downto 0);
+        sel     : out std_logic_vector(3 downto 0);
+        leds    : out std_logic_vector(15 downto 0);
+        numtry  : in integer;
+        numin   : in std_logic_vector(3 downto 0);
+        rstg    : out std_logic;
+        exito   : in boolean
+    );
+    end component;
+
+    -- Señales internas
+    signal numal_interno : std_logic_vector(3 downto 0);
+    signal next2_signal : std_logic;
+    signal next3_signal : std_logic;
+    signal numtry_signal : integer;
+    signal rstg_interno : std_logic;
+    signal exito_signal : boolean;
+    signal etapa1_activa_signal : std_logic;
+
+    -- Señales para multiplexar salidas
+    signal seg_7_p1, seg_7_p2, seg_7_p3, seg_7_p4 : std_logic_vector(7 downto 0);
+    signal sel_p1, sel_p2, sel_p3, sel_p4 : std_logic_vector(3 downto 0);
+    signal leds_p1, leds_p2, leds_p3, leds_p4 : std_logic_vector(15 downto 0);
+
+    -- Máquina de estados
+    type estado_juego is (
+        ETAPA_GENERACION,
+        ETAPA_CONFIRMACION,
+        ETAPA_INTENTOS,
+        ETAPA_FINAL
+    );
+    signal estado_actual : estado_juego := ETAPA_GENERACION;
+
+    -- Señales de control
+    signal etapa_actual_vector : std_logic_vector(1 downto 0) := "00";
+
+begin
+
+    -- Instanciación de componentes
+    parte1: pat_aleatoria
+    port map(
+        genn => genn,
+        clk1 => clk,
+        rstg => rstg_interno,
+        numal => numal_interno,
+        seg_7 => seg_7_p1,
+        sel => sel_p1,
+        leds => leds_p1,
+        etapa1_activa => etapa1_activa_signal
+    );
+
+    parte2: inicio
+    port map(
+        numin => numin,
+        seg_7 => seg_7_p2,
+        leds => leds_p2,
+        sel => sel_p2,
+        clk => clk,
+        conf => conf,
+        next2 => next2_signal
+    );
+
+parte3: trys
+port map(
+    numin => numin,
+    clk1 => clk,
+    seg_7 => seg_7_p3,
+    sel => sel_p3,
+    leds => leds_p3,
+    next3 => next3_signal,
+    numtry => numtry_signal,
+    numal => numal_interno,
+    exito => exito_signal,
+    conf => conf,  -- Nueva conexión
+    rstg => rstg_interno  -- Nueva conexión para reset
+);
+
+    parte4: seacaboetavaina
+    port map(
+        clk => clk,
+        seg_7 => seg_7_p4,
+        sel => sel_p4,
+        leds => leds_p4,
+        numtry => numtry_signal,
+        numin => numin,
+        rstg => rstg_interno,
+        exito => exito_signal
+    );
+
+    -- Máquina de estados principal CORREGIDA
+    process(clk, rstg)
+    begin
+        if rstg = '1' then
+            estado_actual <= ETAPA_GENERACION;
+            etapa_actual_vector <= "00";
+        elsif rising_edge(clk) then
+            case estado_actual is
+                when ETAPA_GENERACION =>
+                    -- Esperar a que termine la etapa 1 (cuando etapa1_activa = '0')
+                    if etapa1_activa_signal = '0' then
+                        estado_actual <= ETAPA_CONFIRMACION;
+                        etapa_actual_vector <= "01";
+                    end if;
+
+                when ETAPA_CONFIRMACION =>
+                    -- Esperar señal de next2 para pasar a intentos
+                    if next2_signal = '1' then
+                        estado_actual <= ETAPA_INTENTOS;
+                        etapa_actual_vector <= "10";
+                    end if;
+
+                when ETAPA_INTENTOS =>
+                    -- Esperar señal de next3 para pasar a etapa final
+                    if next3_signal = '1' then
+                        estado_actual <= ETAPA_FINAL;
+                        etapa_actual_vector <= "11";
+                    end if;
+
+                when ETAPA_FINAL =>
+                    -- La parte4 maneja el tiempo y reinicio automático
+                    if rstg_interno = '1' then
+                        estado_actual <= ETAPA_GENERACION;
+                        etapa_actual_vector <= "00";
+                    end if;
+            end case;
+        end if;
+    end process;
+
+    -- Multiplexador de salidas según la etapa actual
+    process(estado_actual, seg_7_p1, seg_7_p2, seg_7_p3, seg_7_p4,
+            sel_p1, sel_p2, sel_p3, sel_p4,
+            leds_p1, leds_p2, leds_p3, leds_p4)
+    begin
+        case estado_actual is
+            when ETAPA_GENERACION =>
+                seg_7 <= seg_7_p1;
+                sel <= sel_p1;
+                leds <= leds_p1;
+
+            when ETAPA_CONFIRMACION =>
+                seg_7 <= seg_7_p2;
+                sel <= sel_p2;
+                leds <= leds_p2;
+
+            when ETAPA_INTENTOS =>
+                seg_7 <= seg_7_p3;
+                sel <= sel_p3;
+                leds <= leds_p3;
+
+            when ETAPA_FINAL =>
+                seg_7 <= seg_7_p4;
+                sel <= sel_p4;
+                leds <= leds_p4;
+        end case;
+    end process;
+
+end structural;
+
