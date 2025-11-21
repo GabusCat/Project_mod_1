@@ -1,0 +1,242 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity inicio is
+port(
+    numin: in std_logic_vector(3 downto 0);
+    seg_7 : out std_logic_vector(7 downto 0);
+    leds : out std_logic_vector(15 downto 0);
+    sel: out std_logic_vector(3 downto 0);
+    clk: in std_logic;  -- señal de 100MHz
+    conf: in std_logic;
+    next2 : out std_logic  -- Nueva señal para siguiente etapa
+);
+end inicio;
+
+architecture structural of inicio is
+
+    signal etapa_terminada : std_logic := '0';
+    
+    -- Señales para el control de tiempo
+    signal counter : unsigned(27 downto 0) := (others => '0');
+    signal blink_counter : unsigned(25 downto 0) := (others => '0');
+    signal display_counter : unsigned(24 downto 0) := (others => '0');
+    
+    -- Estados de la máquina de estados
+    type tipo_estado is (INICIO_PARPADEANTE, ESPERAR_CONF, MOSTRAR_SURE, MOSTRAR_PREGUNTA, ESPERAR_SIG_CONF, TERMINADO);
+    signal estado_actual : tipo_estado := INICIO_PARPADEANTE;
+    
+    -- Señales internas para las salidas
+    signal seg_7_reg   : std_logic_vector(7 downto 0) := (others => '1');
+    signal sel_reg     : std_logic_vector(3 downto 0) := (others => '1');
+    signal leds_reg    : std_logic_vector(15 downto 0) := (others => '1');
+    
+    -- Señal para el display multiplexado
+    signal display_select : unsigned(1 downto 0) := "00";
+    signal refresh_counter : unsigned(19 downto 0) := (others => '0');
+
+begin
+
+    -- Asignación de salidas
+    seg_7 <= seg_7_reg;
+    sel <= sel_reg;
+    leds <= leds_reg;
+    next2 <= etapa_terminada;
+
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            case estado_actual is
+                
+                when INICIO_PARPADEANTE =>
+                    etapa_terminada <= '0';
+                    -- Estado inicial: mostrar "----" titilando por 1 segundo (CORREGIDO)
+                    if counter < 100000000 then  -- 1 segundo a 100MHz (CORREGIDO)
+                        counter <= counter + 1;
+                        
+                        -- Control del parpadeo (cada 250ms)
+                        if blink_counter < 25000000 then
+                            blink_counter <= blink_counter + 1;
+                            -- Mostrar "----"
+                            case to_integer(display_select) is
+                                when 0 =>
+                                    seg_7_reg <= "11111101";  -- -
+                                    sel_reg <= "0111";
+                                when 1 =>
+                                    seg_7_reg <= "11111101";  -- -
+                                    sel_reg <= "1011";
+                                when 2 =>
+                                    seg_7_reg <= "11111101";  -- -
+                                    sel_reg <= "1101";
+                                when others =>
+                                    seg_7_reg <= "11111101";  -- -
+                                    sel_reg <= "1110";
+                            end case;
+                        else
+                            -- Apagar display durante el parpadeo
+                            seg_7_reg <= (others => '1');
+                            sel_reg <= "1111";
+                            if blink_counter >= 50000000 then
+                                blink_counter <= (others => '0');
+                            else
+                                blink_counter <= blink_counter + 1;
+                            end if;
+                        end if;
+                        
+                        -- Contador para multiplexado de displays
+                        if refresh_counter >= 100000 then
+                            refresh_counter <= (others => '0');
+                            display_select <= display_select + 1;
+                        else
+                            refresh_counter <= refresh_counter + 1;
+                        end if;
+                        
+                    else
+                        -- Pasados 1 segundo, ir al siguiente estado
+                        estado_actual <= ESPERAR_CONF;
+                        counter <= (others => '0');
+                        blink_counter <= (others => '0');
+                    end if;
+                
+                when ESPERAR_CONF =>
+                    -- Esperar confirmación del usuario
+                    -- Mostrar "----" estático
+                    case to_integer(display_select) is
+                        when 0 =>
+                            seg_7_reg <= "11111101";  -- -
+                            sel_reg <= "0111";
+                        when 1 =>
+                            seg_7_reg <= "11111101";  -- -
+                            sel_reg <= "1011";
+                        when 2 =>
+                            seg_7_reg <= "11111101";  -- -
+                            sel_reg <= "1101";
+                        when others =>
+                            seg_7_reg <= "11111101";  -- -
+                            sel_reg <= "1110";
+                    end case;
+                    
+                    -- Contador para multiplexado
+                    if refresh_counter >= 100000 then
+                        refresh_counter <= (others => '0');
+                        display_select <= display_select + 1;
+                    else
+                        refresh_counter <= refresh_counter + 1;
+                    end if;
+                    
+                    if conf = '1' then
+                        estado_actual <= MOSTRAR_SURE;
+                        counter <= (others => '0');
+                    end if;
+                
+                when MOSTRAR_SURE =>
+                    -- Mostrar "SURE" por 2 segundos
+                    if counter < 200000000 then  -- 2 segundos
+                        counter <= counter + 1;
+                        
+                        case to_integer(display_select) is
+                            when 0 =>
+                                seg_7_reg <= "01001001";  -- S
+                                sel_reg <= "0111";
+                            when 1 =>
+                                seg_7_reg <= "10000011";  -- U
+                                sel_reg <= "1011";
+                            when 2 =>
+                                seg_7_reg <= "01110011";  -- R
+                                sel_reg <= "1101";
+                            when others =>
+                                seg_7_reg <= "01100001";  -- E
+                                sel_reg <= "1110";
+                        end case;
+                        
+                        -- Contador para multiplexado
+                        if refresh_counter >= 100000 then
+                            refresh_counter <= (others => '0');
+                            display_select <= display_select + 1;
+                        else
+                            refresh_counter <= refresh_counter + 1;
+                        end if;
+                        
+                    else
+                        estado_actual <= MOSTRAR_PREGUNTA;
+                        counter <= (others => '0');
+                    end if;
+                
+                when MOSTRAR_PREGUNTA =>
+                    -- Mostrar ".?.?" por 1 segundo
+                    if counter < 100000000 then  -- 1 segundo
+                        counter <= counter + 1;
+                        
+                        case to_integer(display_select) is
+                            when 0 =>
+                                seg_7_reg <= "11111110";  -- .
+                                sel_reg <= "0111";
+                            when 1 =>
+                                seg_7_reg <= "00110101";  -- ?
+                                sel_reg <= "1011";
+                            when 2 =>
+                                seg_7_reg <= "11111110";  -- .
+                                sel_reg <= "1101";
+                            when others =>
+                                seg_7_reg <= "00110101";  -- ?
+                                sel_reg <= "1110";
+                        end case;
+                        
+                        -- Contador para multiplexado
+                        if refresh_counter >= 100000 then
+                            refresh_counter <= (others => '0');
+                            display_select <= display_select + 1;
+                        else
+                            refresh_counter <= refresh_counter + 1;
+                        end if;
+                        
+                    else
+                        estado_actual <= ESPERAR_SIG_CONF;
+                        counter <= (others => '0');
+                    end if;
+                
+                when ESPERAR_SIG_CONF =>
+                    -- Esperar confirmación para pasar a siguiente fase
+                    -- Mostrar ".?.?" estático
+                    case to_integer(display_select) is
+                        when 0 =>
+                                seg_7_reg <= "11111110";  -- .
+                                sel_reg <= "0111";
+                            when 1 =>
+                                seg_7_reg <= "00110101";  -- ?
+                                sel_reg <= "1011";
+                            when 2 =>
+                                seg_7_reg <= "11111110";  -- .
+                                sel_reg <= "1101";
+                            when others =>
+                                seg_7_reg <= "00110101";  -- ?
+                                sel_reg <= "1110";
+                    end case;
+                    
+                    -- Contador para multiplexado
+                    if refresh_counter >= 100000 then
+                        refresh_counter <= (others => '0');
+                        display_select <= display_select + 1;
+                    else
+                        refresh_counter <= refresh_counter + 1;
+                    end if;
+                    
+                    if conf = '1' then
+                        estado_actual <= TERMINADO;
+                        etapa_terminada <= '1';
+                        counter <= (others => '0');
+                    end if;
+                    
+                when TERMINADO =>
+                    -- Mantener señal activa hasta que el top cambie de etapa
+                    seg_7_reg <= (others => '1');
+                    sel_reg <= "1111";
+                    leds_reg <= (others => '0');
+                    etapa_terminada <= '1';
+                    
+            end case;
+        end if;
+    end process;
+
+end structural;
