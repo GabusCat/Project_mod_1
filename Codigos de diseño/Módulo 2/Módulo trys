@@ -1,0 +1,236 @@
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
+
+entity trys is 
+port(
+    numin: in std_logic_vector(3 downto 0);
+    clk1 : in std_logic;
+    seg_7 : out std_logic_vector(7 downto 0);
+    sel : out std_logic_vector(3 downto 0);
+    leds : out std_logic_vector(15 downto 0);
+    next3: out std_logic;
+    numtry: out integer;
+    numal: in std_logic_vector(3 downto 0);
+    exito: out boolean;
+    conf: in std_logic;
+    rstg: in std_logic
+);
+end trys;
+
+architecture structural of trys is
+    signal contador_intentos : integer range 0 to 5 := 5;
+    signal estado_actual : integer range 0 to 4 := 0;
+    signal contador_tiempo : integer := 0;
+    signal intentos_realizados : integer := 0;
+    signal numero_ingresado : std_logic_vector(3 downto 0) := "0000";
+    signal procesando : std_logic := '0';
+    signal exito_interno : boolean := false;
+    
+    signal seg_7_reg : std_logic_vector(7 downto 0) := (others => '1');
+    signal sel_reg : std_logic_vector(3 downto 0) := "1111";
+    signal leds_reg : std_logic_vector(15 downto 0) := (others => '1');
+    signal display_select : integer range 0 to 3 := 0;
+    signal refresh_counter : integer := 0;
+    
+    signal conf_prev : std_logic := '0';
+    signal conf_pulse : std_logic := '0';
+    signal numin_registrado : std_logic_vector(3 downto 0) := "0000";
+    signal numin_valido : std_logic := '0';
+    
+    constant TIEMPO_SUBE_BAJA : integer := 200000000;
+    constant TIEMPO_CHANCES : integer := 100000000;
+    constant TIEMPO_ACIERTO : integer := 300000000;
+    constant TIEMPO_PARPADEO : integer := 50000000;
+    constant REFRESH_LIMIT : integer := 100000;
+    
+begin
+
+    numtry <= intentos_realizados;
+    seg_7 <= seg_7_reg;
+    sel <= sel_reg;
+    leds <= leds_reg;
+    exito <= exito_interno;
+
+    process(clk1)
+    begin
+        if rising_edge(clk1) then
+            conf_prev <= conf;
+            if conf = '1' and conf_prev = '0' then
+                conf_pulse <= '1';
+            else
+                conf_pulse <= '0';
+            end if;
+        end if;
+    end process;
+
+    process(clk1)
+    begin
+        if rising_edge(clk1) then
+            if refresh_counter >= REFRESH_LIMIT then
+                refresh_counter <= 0;
+                display_select <= (display_select + 1) mod 4;
+            else
+                refresh_counter <= refresh_counter + 1;
+            end if;
+        end if;
+    end process;
+
+    process(clk1)
+    begin
+        if rising_edge(clk1) then
+            if rstg = '1' then
+                contador_intentos <= 5;
+                intentos_realizados <= 0;
+                estado_actual <= 0;
+                contador_tiempo <= 0;
+                procesando <= '0';
+                exito_interno <= false;
+                numin_registrado <= "0000";
+                numin_valido <= '0';
+                numero_ingresado <= "0000";
+                seg_7_reg <= (others => '1');
+                sel_reg <= "1111";
+                leds_reg <= (others => '1');
+                next3 <= '0';
+            else
+                -- Solo registrar numin si estamos en estado de espera y no hay procesamiento
+                if estado_actual = 0 and procesando = '0' and numin_valido = '0' then
+                    if numin /= "0000" then
+                        numin_registrado <= numin;
+                        numin_valido <= '1';
+                    end if;
+                end if;
+                
+                case estado_actual is
+                    when 0 =>
+                        case display_select is
+                            when 0 => seg_7_reg <= "11111101"; sel_reg <= "0111";
+                            when 1 => seg_7_reg <= "11111101"; sel_reg <= "1011";
+                            when 2 => seg_7_reg <= "11111101"; sel_reg <= "1101";
+                            when 3 => seg_7_reg <= "11111101"; sel_reg <= "1110";
+                        end case;
+                        
+                        contador_tiempo <= 0;
+                        exito_interno <= false;
+                        
+                        if numin_valido = '1' and conf_pulse = '1' and procesando = '0' and contador_intentos > 0 then
+                            numero_ingresado <= numin_registrado;
+                            estado_actual <= 1;
+                            procesando <= '1';
+                            numin_valido <= '0';
+                        end if;
+                        
+                    when 1 =>
+                        case display_select is
+                            when 0 => seg_7_reg <= (others => '1'); sel_reg <= "0111";
+                            when 1 => seg_7_reg <= (others => '1'); sel_reg <= "1011";
+                            when 2 => seg_7_reg <= (others => '1'); sel_reg <= "1101";
+                            when 3 => seg_7_reg <= (others => '1'); sel_reg <= "1110";
+                        end case;
+                        
+                        intentos_realizados <= intentos_realizados + 1;
+                        
+                        if numero_ingresado = numal then
+                            estado_actual <= 4;
+                            exito_interno <= true;
+                        else
+                            estado_actual <= 2;
+                            contador_intentos <= contador_intentos - 1;
+                            exito_interno <= false;
+                        end if;
+                        
+                        contador_tiempo <= 0;
+                        
+                    when 2 =>
+                        contador_tiempo <= contador_tiempo + 1;
+                        
+                        if unsigned(numero_ingresado) > unsigned(numal) then
+                            case display_select is
+                                when 0 => seg_7_reg <= "00000001"; sel_reg <= "0111";
+                                when 1 => seg_7_reg <= "00010001"; sel_reg <= "1011";
+                                when 2 => seg_7_reg <= "10001111"; sel_reg <= "1101";
+                                when 3 => seg_7_reg <= "00010001"; sel_reg <= "1110";
+                            end case;
+                        else
+                            case display_select is
+                                when 0 => seg_7_reg <= "01001001"; sel_reg <= "0111";
+                                when 1 => seg_7_reg <= "10000011"; sel_reg <= "1011";
+                                when 2 => seg_7_reg <= "00000001"; sel_reg <= "1101";
+                                when 3 => seg_7_reg <= "01100001"; sel_reg <= "1110";
+                            end case;
+                        end if;
+                        
+                        if contador_tiempo >= TIEMPO_SUBE_BAJA then
+                            estado_actual <= 3;
+                            contador_tiempo <= 0;
+                        end if;
+                        
+                    when 3 =>
+                        contador_tiempo <= contador_tiempo + 1;
+                        
+                        case display_select is
+                            when 0 => seg_7_reg <= "01100011"; sel_reg <= "0111";
+                            when 1 => seg_7_reg <= "10010001"; sel_reg <= "1011";
+                            when 2 => seg_7_reg <= "01110011"; sel_reg <= "1101";
+                            when 3 => 
+                                case contador_intentos is
+                                    when 0 => seg_7_reg <= "00000011";
+                                    when 1 => seg_7_reg <= "10011111";
+                                    when 2 => seg_7_reg <= "00100101";
+                                    when 3 => seg_7_reg <= "00001101";
+                                    when 4 => seg_7_reg <= "10011001";
+                                    when 5 => seg_7_reg <= "01001001";
+                                    when others => seg_7_reg <= "11111111";
+                                end case;
+                                sel_reg <= "1110";
+                        end case;
+                        
+                        if contador_tiempo >= TIEMPO_CHANCES then
+                            estado_actual <= 0;
+                            contador_tiempo <= 0;
+                            procesando <= '0';
+                        end if;
+                        
+                    when 4 =>
+                        contador_tiempo <= contador_tiempo + 1;
+                        
+                        case display_select is
+                            when 0 => seg_7_reg <= "00000011"; sel_reg <= "0111";
+                            when 1 => seg_7_reg <= "00000011"; sel_reg <= "1011";
+                            when 2 => seg_7_reg <= "10010001"; sel_reg <= "1101";
+                            when 3 => seg_7_reg <= "10011110"; sel_reg <= "1110";
+                        end case;
+                        
+                        if contador_tiempo > TIEMPO_ACIERTO then
+                            if (contador_tiempo / TIEMPO_PARPADEO) mod 2 = 0 then
+                                leds_reg <= (others => '1');
+                            else
+                                leds_reg <= (others => '0');
+                            end if;
+                        end if;
+                        
+                end case;
+                
+                if estado_actual /= 4 then
+                    case contador_intentos is
+                        when 5 => leds_reg <= "1111111111111111";
+                        when 4 => leds_reg <= "0001111111111000";
+                        when 3 => leds_reg <= "0000111111110000";
+                        when 2 => leds_reg <= "0000011111100000";
+                        when 1 => leds_reg <= "0000001111000000";
+                        when 0 => leds_reg <= "0000000110000000";
+                        when others => leds_reg <= (others => '0');
+                    end case;
+                end if;
+                
+                if contador_intentos = 0 or estado_actual = 4 then
+                    next3 <= '1';
+                else
+                    next3 <= '0';
+                end if;
+            end if;
+        end if;
+    end process;
+
+end structural;
